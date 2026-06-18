@@ -1,0 +1,50 @@
+# ── ARIA Project .gitignore ───────────────────────────────────────────
+
+# OS junk
+Thumbs.db
+.DS_Store
+*.swp
+*.swo
+*~
+pagefile.sys
+$RECYCLE.BIN/
+.GamingRoot
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Environment & credentials
+.env
+.venv/
+venv/
+
+# ARIA runtime data
+.aria/
+
+# IDE
+.idea/
+.vscode/
+*.sublime-*
+
+# PDFs, exam materials, study files (not part of ARIA)
+*.pdf
+*.xlsx
+*.xls
+AKASH NEET MATERIAL CHE BOOSTER Q & SOL/
+AKASH NEET MATERIAL PHY BOOSTER Q & SOL/
+CENCAGE BOOKS/
+CENGAGE  ADV 6 BOOKS/
+CENGAGE CHEMISTRY/
+DISHA TOPIC WISE 12 BOOKS/
+FIITJEE WORKSHEETS/
+FINAL PREPARATION/
+FINAL REVISION PHY PUC STD TASK/
+NANO THINK IIT NEW MODULES 25/
+NEET MENTOR CHE/
+NEET Mentor Physics Vol 1 & 2I by Pearson_nodrm/
+SHRAVAN FILES/
