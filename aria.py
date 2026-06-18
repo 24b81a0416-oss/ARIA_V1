@@ -111,7 +111,6 @@ HELP_TEXT = """
   `memory`                — View, search, and manage memory (FTS5 keyword)
   `knowledge [query]`     — Semantic search across all past conversations & research
   `skill list`            — List available skills
-  `skill list`            — List available skills
   `skill show [name]`     — Show skill details & instructions
   `skill create [name]`   — Create a new skill
   `read [file]`           — Read PDF, DOCX, or XLSX files
@@ -526,7 +525,7 @@ class ARIA:
             return "What do you want to know? Usage: `knowledge [question]` — e.g., `knowledge what did we learn about FastAPI`"
 
         if not vector_available():
-            return "Vector knowledge base not available. Install chromadb and sentence-transformers to enable."
+            return "Vector knowledge base not available. Make sure Ollama is running with an embedding model pulled (e.g., `ollama pull nomic-embed-text`)."
 
         console.print(f"  Searching knowledge base for: {query}")
 
@@ -1365,7 +1364,6 @@ class ARIA:
         # Initialize persistent memory
         self.session_id = start_session()
         self.memory_initialized = True
-        console.print(f"  [dim]Memory: session {self.session_id}[/dim]")
 
         while self.running:
             try:
@@ -1425,9 +1423,6 @@ def main():
     signal.signal(signal.SIGINT, _signal_handler)
     if hasattr(signal, "SIGTERM"):
         signal.signal(signal.SIGTERM, _signal_handler)
-
-    print(f"  [ARIA] Starting...")
-    print(f"  [ARIA] Project: {PROJECT_ROOT}")
 
     config = load_config()
 
