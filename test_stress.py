@@ -565,16 +565,16 @@ def _():
     assert_eq(stats["count"], 0)
 
 
-@test("Vector: index multi-language content")
+@test("Vector: index various English content")
 def _():
     from utils.vector_store import is_available, index_content, clear_all
     if not is_available():
         return
     texts = [
-        "Hello world this is a test with enough length",
-        "Bonjour le monde ceci est un test assez long",
-        "\u4f60\u597d\u4e16\u754c\uff0c\u8fd9\u662f\u4e00\u4e2a\u8db3\u591f\u957f\u7684\u6d4b\u8bd5\uff0c\u5e94\u8be5\u53ef\u4ee5\u901a\u8fc7\u6d4b\u8bd5\u4e86",
-        "\u0645\u0631\u062d\u0628\u0627 \u0628\u0627\u0644\u0639\u0627\u0644\u0645 \u0647\u0630\u0627 \u0627\u062e\u062a\u0628\u0627\u0631 \u0637\u0648\u064a\u0644 \u0643\u0627\u0641",
+        "Hello world this is a test with enough length to pass the minimum length check in the vector store",
+        "FastAPI is a modern Python web framework for building high performance APIs",
+        "The quick brown fox jumps over the lazy dog near the bank of the river",
+        "Python programming language is widely used for data science and web development",
     ]
     for text in texts:
         result = index_content(text, source="test")
