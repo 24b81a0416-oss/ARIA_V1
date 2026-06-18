@@ -1,16 +1,18 @@
 """
 ARIA — LLM Client Module
 
-Unified interface for three cloud providers:
-  1. GroqClient — fast chat via Groq API (llama-3.3-70b)
-  2. NVIDIAClient — reasoning/coding via NVIDIA NIM (multiple free models)
-  3. OpenRouterClient — any model via OpenRouter (Claude, GPT, Gemini, etc.)
+Unified interface for cloud and local providers:
+  1. GroqClient — fast chat via Groq API
+  2. NVIDIAClient — reasoning/coding via NVIDIA NIM
+  3. OpenRouterClient — any model via OpenRouter
+  4. OllamaClient — local models via Ollama (fully offline)
 
 All use OpenAI-compatible APIs with streaming support.
 """
 
 from __future__ import annotations
 
+import os
 from abc import ABC, abstractmethod
 from typing import Dict, Generator, List, Optional
 
@@ -224,11 +226,69 @@ class OpenRouterClient(LLMClient):
             raise
 
 
+# ─── Ollama Local Client ───────────────────────────────────────────────────────
+
+class OllamaClient(LLMClient):
+    """Client for Ollama — fully local LLM inference.
+
+    Connects to a local Ollama server at OLLAMA_BASE_URL (default: http://localhost:11434)
+    using the OpenAI-compatible endpoint at /v1. No API key needed.
+    """
+
+    def __init__(self, config: AriaConfig, model: Optional[str] = None):
+        self.config = config
+        self.base_url = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434").rstrip("/")
+        self.model = model or os.environ.get("OLLAMA_MODEL", "qwen2.5-coder:7b")
+        self.provider = "ollama"
+        self._client = OpenAI(
+            api_key="ollama",  # Required by OpenAI library but ignored by Ollama
+            base_url=f"{self.base_url}/v1",
+        )
+
+    @retry(
+        stop=stop_after_attempt(2),
+        wait=wait_exponential(multiplier=1, min=1, max=10),
+        retry=retry_if_exception_type(Exception),
+    )
+    def generate_stream(
+        self,
+        prompt: str,
+        system_prompt: Optional[str] = None,
+        temperature: float = 0.7,
+        max_tokens: Optional[int] = None,
+    ) -> Generator[str, None, None]:
+        messages = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": prompt})
+
+        kwargs = {
+            "model": self.model,
+            "messages": messages,
+            "temperature": temperature,
+            "stream": True,
+        }
+        if max_tokens:
+            kwargs["max_tokens"] = max_tokens
+
+        try:
+            response = self._client.chat.completions.create(**kwargs)
+            for chunk in response:
+                if chunk.choices and chunk.choices[0].delta.content:
+                    yield chunk.choices[0].delta.content
+        except Exception:
+            raise
+
+
 # ─── Model Utilities ────────────────────────────────────────────────────────
 
 def detect_provider_from_model(model_name: str) -> str:
     """Detect which provider serves a given model name."""
     model_lower = model_name.lower()
+
+    # Ollama models (local)
+    if model_lower.startswith("ollama/"):
+        return "ollama"
 
     # NVIDIA models
     nvidia_prefixes = ("nvidia/", "deepseek-ai/", "z-ai/", "moonshotai/")
@@ -286,7 +346,7 @@ def create_client(
 
     Args:
         config: AriaConfig instance
-        provider: "groq", "nvidia", or "openrouter"
+        provider: "groq", "nvidia", "openrouter", or "ollama"
         model: Optional model name override
 
     Returns:
@@ -312,8 +372,13 @@ def create_client(
             raise ValueError("OpenRouter is not available. Check OPENROUTER_API_KEY in .env")
         return OpenRouterClient(config, resolved_model)
 
+    elif provider == "ollama":
+        if not config.ollama_available:
+            raise ValueError("Ollama is not available. Is Ollama running on your machine?")
+        return OllamaClient(config, model=resolved_model or None)
+
     else:
-        raise ValueError(f"Unknown provider: {provider}. Use 'groq', 'nvidia', or 'openrouter'.")
+        raise ValueError(f"Unknown provider: {provider}. Use 'groq', 'nvidia', 'openrouter', or 'ollama'.")
 
 
 def create_client_for_model(

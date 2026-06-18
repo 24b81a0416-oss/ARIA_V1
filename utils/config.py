@@ -2,13 +2,14 @@
 ARIA — Configuration Module
 
 Loads API keys from .env and provides typed config access.
-Supports Groq, NVIDIA NIM, and OpenRouter providers.
+Supports Groq, NVIDIA NIM, OpenRouter, and Ollama (local) providers.
 
 Usage:
     config = load_config()
     if config.groq_available: ...
     if config.nvidia_available: ...
     if config.openrouter_available: ...
+    if config.ollama_available: ...
 """
 
 from __future__ import annotations
@@ -79,13 +80,14 @@ class AriaConfig:
     openrouter_api_key: Optional[str] = None
 
     # Provider settings
-    primary_provider: str = "groq"  # "groq", "nvidia", "openrouter", or "auto"
+    primary_provider: str = "groq"  # "groq", "nvidia", "openrouter", "ollama", or "auto"
     active_model: str = ""  # Currently selected model (empty = auto-route)
 
     # Derived state
     groq_available: bool = False
     nvidia_available: bool = False
     openrouter_available: bool = False
+    ollama_available: bool = False
     any_provider_available: bool = False
 
 
@@ -94,8 +96,8 @@ def load_config() -> AriaConfig:
     Load configuration from .env file.
 
     1. Looks for .env in project root
-    2. Reads all API keys (GROQ_API_KEY, NVIDIA_API_KEY, OPENROUTER_API_KEY)
-    3. Checks which providers are available
+    2. Reads all API keys
+    3. Checks which providers are available (including Ollama via HTTP ping)
     4. Returns AriaConfig
     """
     # Load .env from project root
@@ -113,6 +115,16 @@ def load_config() -> AriaConfig:
     openrouter_key = os.getenv("OPENROUTER_API_KEY")
     primary = os.getenv("PRIMARY_PROVIDER", "auto")
 
+    # Check if Ollama is running (local provider)
+    ollama_base = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+    ollama_available = False
+    try:
+        import requests
+        resp = requests.get(f"{ollama_base.rstrip('/')}/api/tags", timeout=2)
+        ollama_available = resp.status_code == 200
+    except Exception:
+        ollama_available = False
+
     config = AriaConfig(
         groq_api_key=groq_key,
         nvidia_api_key=nvidia_key,
@@ -121,7 +133,8 @@ def load_config() -> AriaConfig:
         groq_available=bool(groq_key),
         nvidia_available=bool(nvidia_key),
         openrouter_available=bool(openrouter_key),
-        any_provider_available=bool(groq_key) or bool(nvidia_key) or bool(openrouter_key),
+        ollama_available=ollama_available,
+        any_provider_available=bool(groq_key) or bool(nvidia_key) or bool(openrouter_key) or ollama_available,
     )
 
     return config
@@ -141,10 +154,12 @@ def print_provider_status(config: AriaConfig) -> None:
     groq_status = "[green]✅ Connected[/green]" if config.groq_available else "[yellow]⏸️  No API key[/yellow]"
     nvidia_status = "[green]✅ Connected[/green]" if config.nvidia_available else "[yellow]⏸️  No API key[/yellow]"
     or_status = "[green]✅ Connected[/green]" if config.openrouter_available else "[yellow]⏸️  No API key[/yellow]"
+    ollama_status = "[green]✅ Running[/green]" if config.ollama_available else "[yellow]⏸️  Not detected[/yellow]"
 
-    table.add_row("Groq", groq_status)
-    table.add_row("NVIDIA NIM", nvidia_status)
-    table.add_row("OpenRouter", or_status)
+    table.add_row("Groq (Cloud)", groq_status)
+    table.add_row("NVIDIA NIM (Cloud)", nvidia_status)
+    table.add_row("OpenRouter (Cloud)", or_status)
+    table.add_row("Ollama (Local)", ollama_status)
 
     current_model = config.active_model or f"auto ({DEFAULT_MODELS.get(config.primary_provider, 'groq')})"
     table.add_row("Active Model", f"[cyan]{current_model}[/cyan]")
@@ -161,6 +176,8 @@ def get_available_providers(config: AriaConfig) -> List[str]:
         providers.append("nvidia")
     if config.openrouter_available:
         providers.append("openrouter")
+    if config.ollama_available:
+        providers.append("ollama")
     return providers
 
 

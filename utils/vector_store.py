@@ -1,50 +1,94 @@
 """
 ARIA — Vector Store (Semantic Memory)
 
-ChromaDB-backed vector store for semantic search across conversations,
-research reports, generated projects, and facts.
+ChromaDB-backed vector store for semantic search using Ollama embeddings.
+No PyTorch, no HuggingFace downloads, no loading bars — just Ollama.
 
 Features:
   - Auto-indexing of chat messages, research reports, rd reports
   - Semantic search (find by meaning, not just keywords)
   - Collection-based organization (chat, research, projects, facts)
-  - Lightweight: ChromaDB runs locally, no external services needed
+  - Lightweight: ChromaDB + Ollama, no extra ML dependencies
 
 Usage:
-    from utils.vector_store import get_vector_store, search_memory, index_content
-    vs = get_vector_store()
-    index_content("chat", "What is FastAPI?", "user")
+    from utils.vector_store import search_memory, index_content
+    index_content("What is FastAPI?", source="chat")
     results = search_memory("Python web frameworks", limit=5)
+
+Environment:
+    OLLAMA_BASE_URL     (default: http://localhost:11434)
+    OLLAMA_EMBED_MODEL  (default: nomic-embed-text)
 """
 
 from __future__ import annotations
 
+import os
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-# ── Lazy imports (only loaded when vector store is actually used) ─────
+# ── Configuration ────────────────────────────────────────────────────
+
+_OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
+_OLLAMA_EMBED_MODEL = os.environ.get("OLLAMA_EMBED_MODEL", "nomic-embed-text")
 
 _VECTOR_STORE_DIR = Path(__file__).parent.parent / ".aria" / "vectors"
-_STORE: Optional[Any] = None   # Singleton ChromaDB collection
+_STORE: Optional[Any] = None         # Singleton ChromaDB collection
 _EMBEDDING_FN: Optional[Any] = None  # Singleton embedding function
 
 
-def _get_embedding_function():
-    """Get or create the embedding function (lazy-loaded)."""
+# ── Ollama Embedding Function ────────────────────────────────────────
+
+class OllamaEmbeddingFunction:
+    """ChromaDB-compatible embedding function that calls Ollama's /api/embed.
+
+    Uses the requests library (already a dependency) to get embeddings
+    from a local Ollama server. No PyTorch, no HuggingFace.
+    """
+
+    def __init__(self, base_url: str, model: str):
+        self.base_url = base_url.rstrip("/")
+        self.model = model
+
+    def name(self) -> str:
+        """ChromaDB calls embedding_function.name() to check for conflicts."""
+        return f"ollama_{self.model}"
+
+    def __call__(self, input: List[str]) -> List[List[float]]:
+        """Generate embeddings via Ollama API."""
+        import requests
+
+        response = requests.post(
+            f"{self.base_url}/api/embed",
+            json={"model": self.model, "input": input},
+            timeout=30,
+        )
+        response.raise_for_status()
+        data = response.json()
+        return data["embeddings"]
+
+
+def _ping_ollama() -> bool:
+    """Check if Ollama server is reachable."""
+    try:
+        import requests
+        resp = requests.get(f"{_OLLAMA_BASE_URL}/api/tags", timeout=3)
+        return resp.status_code == 200
+    except Exception:
+        return False
+
+
+def _get_embedding_function() -> Optional[OllamaEmbeddingFunction]:
+    """Get or create the Ollama embedding function singleton."""
     global _EMBEDDING_FN
     if _EMBEDDING_FN is not None:
         return _EMBEDDING_FN
 
-    try:
-        from sentence_transformers import SentenceTransformer
-        model = SentenceTransformer("all-MiniLM-L6-v2")
-        _EMBEDDING_FN = model.encode
-        return _EMBEDDING_FN
-    except ImportError:
-        return None
-    except Exception:
-        return None
+    if not _ping_ollama():
+        return None  # Ollama not running
+
+    _EMBEDDING_FN = OllamaEmbeddingFunction(_OLLAMA_BASE_URL, _OLLAMA_EMBED_MODEL)
+    return _EMBEDDING_FN
 
 
 def _get_store():
@@ -64,6 +108,7 @@ def _get_store():
         client = chromadb.PersistentClient(str(_VECTOR_STORE_DIR))
         collection = client.get_or_create_collection(
             name="aria_memory",
+            embedding_function=embedding_fn,
             metadata={"hnsw:space": "cosine"},
         )
         _STORE = collection
@@ -77,11 +122,11 @@ def _get_store():
 # ── Public API ────────────────────────────────────────────────────────
 
 def is_available() -> bool:
-    """Check if the vector store is available (deps installed)."""
+    """Check if the vector store is available (Ollama + ChromaDB)."""
     try:
         import chromadb
-        import sentence_transformers
-        return True
+        import requests
+        return _ping_ollama()
     except ImportError:
         return False
 
@@ -110,10 +155,9 @@ def index_content(
         return False  # Not available
 
     try:
-        # Generate a stable-ish ID from content hash + timestamp
         doc_id = f"{source}_{int(time.time() * 1000)}_{hash(content) % 10**9}"
 
-        meta = {
+        meta: Dict[str, Any] = {
             "source": source,
             "timestamp": time.time(),
             "time_str": time.strftime("%Y-%m-%d %H:%M"),
@@ -194,7 +238,7 @@ def get_stats() -> Dict[str, Any]:
     """Get vector store statistics."""
     store = _get_store()
     if store is None:
-        return {"available": False, "count": 0, "error": "Not available"}
+        return {"available": False, "count": 0, "error": "Not available (Ollama running?)"}
 
     try:
         count = store.count()
@@ -202,6 +246,7 @@ def get_stats() -> Dict[str, Any]:
             "available": True,
             "count": count,
             "path": str(_VECTOR_STORE_DIR),
+            "ollama_model": _OLLAMA_EMBED_MODEL,
         }
     except Exception as e:
         return {"available": True, "count": -1, "error": str(e)}

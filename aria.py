@@ -12,6 +12,7 @@ Usage:
 
 from __future__ import annotations
 
+import os
 import sys
 import io
 import re
@@ -122,11 +123,20 @@ HELP_TEXT = """
   `model auto`            — Auto-route by task type (default)
   `mode groq`             — Force all tasks to use Groq
   `mode nvidia`           — Force all tasks to use NVIDIA
+  `mode local`            — 🖥️ Force all tasks to use Ollama (fully offline)
+  `mode cloud`            — ☁️ Switch back to cloud providers
+
+**🌐 Local vs Cloud:**
+  `mode local`            — Run entirely offline using Ollama
+  `mode cloud`            — Use cloud providers (Groq, NVIDIA, OpenRouter)
+  `mode auto`             — Back to default routing
+  *ARIA auto-detects Ollama at startup. If running, you can use `mode local` anytime.*
 
 **Router — Task-to-Provider Mapping:**
   Groq → chat, research, docs, code review
   NVIDIA → complex coding, deep reasoning, architecture
   OpenRouter → any model (Claude, GPT, Gemini, DeepSeek)
+  Ollama → fully local, any model you have pulled (qwen2.5-coder, llama3.2, etc.)
 """
 
 
@@ -222,6 +232,10 @@ class ARIA:
             return {"action": "set_mode", "args": "groq"}
         if text == "mode nvidia":
             return {"action": "set_mode", "args": "nvidia"}
+        if text == "mode local":
+            return {"action": "set_mode", "args": "local"}
+        if text == "mode cloud":
+            return {"action": "set_mode", "args": "cloud"}
         if text == "mode auto":
             return {"action": "set_mode", "args": "auto"}
         if text in ("mode rd", "mode 1", "mode1"):
@@ -315,8 +329,24 @@ class ARIA:
     def _resolve_client(self, task_type: str = "chat"):
         """
         Get the best client+provider for a task using the router.
+        If force_mode is set (e.g. 'ollama' for local mode), bypass router.
         Returns (client, provider_name) or raises RuntimeError.
         """
+        # If force_mode is set, use that provider directly (bypass router)
+        if self.force_mode:
+            available = get_available_providers(self.config)
+            if self.force_mode not in available:
+                raise RuntimeError(
+                    f"Provider '{self.force_mode}' is not available. "
+                    f"Available: {', '.join(available) if available else 'none'}"
+                )
+            try:
+                client = create_client(self.config, self.force_mode)
+                return client, self.force_mode
+            except ValueError as e:
+                raise RuntimeError(str(e))
+
+        # Normal router-based resolution
         available = get_available_providers(self.config)
         if not available:
             raise RuntimeError("No LLM providers available. Add an API key to .env")
@@ -943,10 +973,14 @@ class ARIA:
             lines.append("")
         lines.extend([
             "**Providers:**",
-            f"Groq: {'✅ Connected' if self.config.groq_available else '⏸️  No API key'}",
-            f"NVIDIA: {'✅ Connected' if self.config.nvidia_available else '⏸️  No API key'}",
-            f"OpenRouter: {'✅ Connected' if self.config.openrouter_available else '⏸️  No API key'}",
+            f"🌐 Groq: {'✅ Connected' if self.config.groq_available else '⏸️  No API key'}",
+            f"🌐 NVIDIA: {'✅ Connected' if self.config.nvidia_available else '⏸️  No API key'}",
+            f"🌐 OpenRouter: {'✅ Connected' if self.config.openrouter_available else '⏸️  No API key'}",
+            f"🖥️ Ollama (Local): {'✅ Running' if self.config.ollama_available else '⏸️  Not detected'}",
         ])
+        if self.config.ollama_available:
+            model_name = os.environ.get("OLLAMA_MODEL", "qwen2.5-coder:7b")
+            lines.append(f"     Model: `{model_name}` — use `mode local` for offline mode")
         return "\n".join(lines)
 
     def _handle_clear(self) -> str:
@@ -989,6 +1023,16 @@ class ARIA:
             self.force_mode = None
             self.work_mode = None
             return "Mode set to **auto** — back to normal routing."
+        elif mode == "local":
+            if not self.config.ollama_available:
+                return "Ollama is not running. Start Ollama first with `ollama serve` or `ollama run [model]`."
+            self.force_mode = "ollama"
+            model_name = os.environ.get("OLLAMA_MODEL", "qwen2.5-coder:7b")
+            return f"🖥️ Mode set to **local** — all tasks will use Ollama ({model_name}). Fully offline.\n\nType `mode cloud` or `mode auto` to switch back."
+        elif mode == "cloud":
+            self.force_mode = None
+            self.work_mode = None
+            return "☁️ Mode set to **cloud** — using your configured cloud providers (Groq, NVIDIA, OpenRouter)."
         elif mode in ("groq", "nvidia"):
             self.force_mode = mode
             return f"Provider mode set to **{mode}** — all tasks will use {mode.title()}."
@@ -1007,7 +1051,7 @@ class ARIA:
             self.work_mode = "orchestrate"
             self.force_mode = None
             return "Mode set to **Orchestrate** 🔀 — complex tasks will be decomposed into sub-agents.\n\nType `mode auto` to exit."
-        return f"Unknown mode: {mode}.\n\nProvider modes: `groq`, `nvidia`, `openrouter`, `auto`\nWork modes: `rd` / `1`, `engineer` / `2`, `orchestrate` / `3`"
+        return f"Unknown mode: {mode}.\n\nProvider modes: `groq`, `nvidia`, `openrouter`, `local`, `cloud`, `auto`\nWork modes: `rd` / `1`, `engineer` / `2`, `orchestrate` / `3`"
 
     def _handle_research(self, topic: str) -> Optional[str]:
         """Handle research command — web search + structured report."""
@@ -1311,8 +1355,12 @@ class ARIA:
         console.print("[dim]Type 'help' for commands, 'exit' to quit.[/dim]")
 
         if not self.config.any_provider_available:
-            console.print("\n[yellow]No API keys found. Add GROQ_API_KEY, NVIDIA_API_KEY, and/or OPENROUTER_API_KEY to .env[/yellow]")
-            return
+            if self.config.ollama_available:
+                console.print("  [green]Ollama detected! Use `mode local` to run fully offline.[/green]")
+            else:
+                console.print("\n[yellow]No API keys found. Add GROQ_API_KEY, NVIDIA_API_KEY, and/or OPENROUTER_API_KEY to .env[/yellow]")
+                console.print("  [dim]Or install Ollama (ollama.com) for fully local operation.[/dim]")
+                return
 
         # Initialize persistent memory
         self.session_id = start_session()

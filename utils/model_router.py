@@ -49,6 +49,7 @@ TASK_ROUTING: Dict[str, str] = {
     "optimization": "nvidia",
     "ml_model_code": "nvidia",
     "orchestration": "nvidia",
+
 }
 
 
