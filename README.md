@@ -1,6 +1,6 @@
 # ARIA — AI-Powered Engineering Assistant
 
-**ARIA** is a terminal-based AI engineering assistant that helps you research, architect, code, review, debug, and orchestrate complex software projects — all from your CLI.
+**ARIA** is a terminal-based AI engineering assistant with 3 work modes. Enter a mode, then type naturally — ARIA detects your intent.
 
 ```
   ╔══════════════════════════════════════════╗
@@ -8,40 +8,22 @@
   ╚══════════════════════════════════════════╝
 ```
 
-## Features
+## 3 Work Modes — Just Type Naturally
 
-### 🧪 R&D Mode
-- **Deep Research** — Multi-source synthesis on any topic
-- **Comparison** — Side-by-side technology comparison with feature matrices
-- **Feasibility Analysis** — Risk assessment, timeline, and viability checks
-- **Competitive Analysis** — SWOT analysis and market landscape
+| Mode | Enter | Description |
+|------|-------|-------------|
+| 🧪 **Research & Analysis** | `mode 1` or `mode research` | Deep research, comparisons, feasibility studies, competitive analysis |
+| 🛠️ **Design & Build** | `mode 2` or `mode plan` | Architecture, code generation, review, debug, scan, edit, full pipeline |
+| 🔀 **Orchestrate** | `mode 3` or `mode orchestrate` | Complex multi-agent task decomposition and synthesis |
 
-### 🛠️ Engineer Mode
-- **Architect** — Design system architecture, component diagrams, and data flow
-- **Code** — Generate multi-file projects from natural language descriptions
-- **Review** — Static analysis for bugs, style issues, and security concerns
-- **Debug** — Identify and fix issues in existing code with apply confirmation
-- **Scan** — Analyze project structure, dependencies, and imports
-- **Edit** — Make precise edits to existing code with preview before applying
-
-### 🔀 Orchestrate Mode
-- Decompose complex tasks into sub-agents, execute them, and synthesize results
-
-### 🧠 Memory & Knowledge
-- **Persistent memory** with SQLite-backed conversation history
-- **Semantic search** using ChromaDB + Ollama embeddings (fully local)
-- **Keyword search** using FTS5 full-text search
-- **Fact storage** — Save preferences and context about your projects
-- **Knowledge recall** — `knowledge [query]` for semantic search across all past content
-
-### 💬 Chat
-- Streaming responses with Rich markdown rendering
-- Switch between **cloud providers** (Groq, NVIDIA, OpenRouter) and **local Ollama**
-- Smart model routing: Groq for chat/research, NVIDIA for deep reasoning, OpenRouter for any model
+**No keywords to remember.** Just enter a mode and type naturally:
+- In Research mode: *"Flask vs FastAPI"* → comparison · *"is this idea feasible?"* → feasibility analysis
+- In Design & Build mode: *"fix the login bug"* → debug · *"build a chat app"* → full project
+- In Orchestrate mode: *"set up a FastAPI project with Docker and CI/CD"* → multi-agent pipeline
 
 ## Quick Start
 
-### Cloud Mode (API Keys)
+### Cloud Mode (API Keys Required)
 
 ```bash
 # Prerequisites: Python 3.10+ and an API key from a provider
@@ -49,8 +31,8 @@
 #   NVIDIA: https://build.nvidia.com
 #   OpenRouter: https://openrouter.ai
 
-git clone https://github.com/24b81a0416-oss/ARIA_V3.git
-cd ARIA_V3
+git clone https://github.com/24b81a0416-oss/ARIA_V1.git
+cd ARIA_V1
 pip install -r requirements.txt
 pip install -e .
 ```
@@ -83,48 +65,85 @@ aria
 
 At the ARIA prompt, type `mode local` to switch to fully offline mode using Ollama.
 
-### Switching Modes
+## Features
 
-```
-mode local     → 🖥️ Switch to local Ollama (fully offline)
-mode cloud     → ☁️ Switch back to cloud providers (Groq, NVIDIA, OpenRouter)
-mode auto      → Back to default routing (auto-select by task)
-```
+### 🧪 Mode 1 — Research & Analysis
+- **Deep Research** — Multi-source synthesis on any topic
+- **Comparison** — Side-by-side technology comparison with feature matrices
+- **Feasibility Analysis** — Risk assessment, timeline, and viability checks
+- **Competitive Analysis** — SWOT analysis and market landscape
+- **Web Research** — Quick structured research reports
 
-ARIA auto-detects Ollama at startup. If Ollama is running, you'll see it in the status and can use `mode local` anytime.
+### 🛠️ Mode 2 — Design & Build
+- **Architect** — Design system architecture, component diagrams, and data flow
+- **Code** — Generate multi-file projects from natural language descriptions
+- **Review** — Static analysis for bugs, style issues, and security concerns
+- **Debug** — Identify and fix issues in existing code with apply confirmation
+- **Scan** — Analyze project structure, dependencies, and imports
+- **Edit** — Make precise edits to existing code with preview before applying
+- **Full Pipeline** — Generate + review in one go
+
+### 🔀 Mode 3 — Orchestrate
+- Decompose complex tasks into sub-agents, execute them, and synthesize results
+
+### 🧠 Memory & Knowledge
+- **Persistent memory** with SQLite-backed conversation history
+- **Semantic search** using ChromaDB + Ollama embeddings (fully local)
+- **Keyword search** using FTS5 full-text search
+- **Fact storage** — Save preferences and context about your projects
+- **Knowledge recall** — `knowledge [query]` for semantic search across all past content
+
+### 💬 Chat
+- Streaming responses with Rich markdown rendering
+- Switch between **cloud providers** (Groq, NVIDIA, OpenRouter) and **local Ollama**
+- Smart model routing: Groq for chat/research, NVIDIA for deep reasoning
 
 ## Commands
 
+### System Commands (Work in ALL Modes)
+
 | Command | Description |
 |---------|-------------|
-| `mode local` | 🖥️ Switch to local Ollama (offline) |
-| `mode cloud` | ☁️ Switch to cloud providers |
-| `mode rd` / `1` | Enter R&D mode |
-| `mode engineer` / `2` | Enter Engineer mode |
-| `mode orchestrate` / `3` | Enter Orchestrate mode |
-| `mode auto` | Back to normal auto-routing |
-| `rd [topic]` | Deep research on a topic |
-| `rd compare A vs B` | Compare technologies |
-| `rd feasibility [idea]` | Feasibility analysis |
-| `rd competitive [market]` | Competitive landscape |
-| `research [topic]` | Quick web research |
-| `engineer [desc]` | Full project generation pipeline |
-| `architect [desc]` | System architecture design |
-| `code [desc]` | Multi-file code generation |
-| `review [path]` | Code review |
-| `debug [path]` | Debug and fix code |
-| `scan [path]` | Analyze project structure |
-| `edit [desc]` | Precise code edits |
-| `orchestrate [task]` | Multi-agent task orchestration |
-| `ask [question]` | Deep reasoning question |
-| `explain [topic]` | Detailed explanation |
-| `bash [command]` | Run terminal command |
-| `knowledge [query]` | Semantic search across memory |
-| `memory` | View/manage memory |
-| `model list` | List available models |
 | `help` | Show help |
-| `status` | Show provider status |
-| `exit` / `quit` | Shut down |
+| `status` | Show provider & model status |
+| `clear` | Clear screen |
+| `exit` / `quit` / `bye` | Shut down ARIA |
+| `save` | Save last report to markdown |
+| `save [filename]` | Save last report to a specific file |
+
+### Memory & Knowledge
+
+| Command | Description |
+|---------|-------------|
+| `memory` | View memory overview |
+| `memory recall [query]` | Search past conversations |
+| `memory fact key: value` | Save a fact |
+| `memory stats` | View statistics |
+| `knowledge [query]` | Semantic search across all indexed content |
+
+### Models & Provider
+
+| Command | Description |
+|---------|-------------|
+| `model list` | List available models |
+| `model [name]` | Switch to a specific model |
+| `model auto` | Auto-route by task type |
+| `mode local` | 🖥️ Switch to Ollama (offline) |
+| `mode cloud` | ☁️ Switch to cloud providers |
+| `mode groq` | Force Groq |
+| `mode nvidia` | Force NVIDIA |
+
+### Utilities
+
+| Command | Description |
+|---------|-------------|
+| `bash [command]` | Run terminal command (with safety check) |
+| `bash! [command]` | Run terminal command (skip confirmation) |
+| `read [file]` | Read PDF, DOCX, or XLSX |
+| `write [file]` | Write last report to DOCX or XLSX |
+| `skill list` | List available skills |
+| `skill show [name]` | View skill details |
+| `skill create [name]` | Create a new skill |
 
 ## Configuration
 
@@ -137,7 +156,6 @@ All configuration is via environment variables (in `.env` or system):
 | `GROQ_API_KEY` | Your Groq API key |
 | `NVIDIA_API_KEY` | Your NVIDIA NIM API key |
 | `OPENROUTER_API_KEY` | Your OpenRouter API key |
-| `PRIMARY_PROVIDER` | Default: `auto` (options: groq, nvidia, openrouter, auto) |
 
 ### Local (Ollama)
 
@@ -150,7 +168,7 @@ All configuration is via environment variables (in `.env` or system):
 ## Architecture
 
 ```
-ARIA_V3/
+ARIA_V1/
 ├── aria.py                 # Main CLI entry point
 ├── pyproject.toml          # Python packaging config
 ├── requirements.txt        # Dependencies

@@ -37,7 +37,6 @@ if sys.platform == "win32":
 from utils.config import load_config, print_provider_status, AriaConfig, get_available_providers, get_all_known_models, DEFAULT_MODELS
 from utils.model_router import ModelRouter
 from utils.llm import create_client, GroqClient  # create_client used by router; GroqClient for engineer pipeline
-from agents.research_agent import run_research, format_report
 from agents.engineering_agent import run_engineering_pipeline, format_engineering_result
 from agents.rd_agent import run_rd_research, format_rd_report
 from agents.editor_agent import plan_edits, apply_edits
@@ -66,76 +65,60 @@ console = Console()
 HELP_TEXT = """
 ## ARIA Commands
 
-**Work Modes — activate & type naturally:**
-  `mode rd` / 1              — 🧪 R&D Mode: research, compare, analyze
-  `mode engineer` / 2        — 🛠️ Engineer Mode: build, code, review, debug
-  `mode orchestrate` / 3     — 🔀 Orchestrate Mode: complex multi-agent tasks
-  `mode auto`                — Back to normal chat (exits work mode)
+**ARIA has 3 work modes. Enter one, then type naturally.**
 
-  *In R&D mode, typing "Flask vs FastAPI" → auto-routes to `rd compare`.*
-  *In Engineer mode, typing "fix the login bug" → auto-routes to `debug`.*
+  `mode 1` / `mode research`   — 🧪 **Research & Analysis**: deep research, compare technologies, feasibility studies, competitive analysis, web research
+  `mode 2` / `mode plan`       — 🛠️ **Design & Build**: architecture, code generation, review, debug, scan, edit, full project pipeline
+  `mode 3` / `mode orchestrate` — 🔀 **Orchestrate**: decompose complex tasks into sub-agents, execute, and synthesize
+  `mode auto`                  — Back to normal chat (exits work mode)
 
-**🧪 R&D:**
-  `rd [topic]`                — Deep research: multi-angle, multi-source synthesis
-  `rd compare [A] vs [B]`     — Technology comparison with feature matrix
-  `rd feasibility [idea]`     — Feasibility analysis with risks & timeline
-  `rd competitive [market]`   — Competitive landscape with SWOT
-  `research [topic]`          — Quick web research with structured report
-  `save`                      — Save last report to `research-[topic].md`
-  `save [filename]`           — Save last report to a specific file
+  *In Research mode, typing "Flask vs FastAPI" → compare analysis.*
+  *In Design & Build mode, typing "fix the login bug" → debug.*
+  *In Orchestrate mode, anything you type → multi-agent orchestration.*
 
-**🛠️ Engineer:**
-  `engineer [desc]`       — Full pipeline: generate + review in one go
-  `architect [desc]`      — Design system architecture & components
-  `code [desc]`           — Generate multi-file code projects
-  `review [path]`         — Review code for bugs, style, security
-  `debug [path]`          — Debug & fix issues in code files
-  `scan`                  — Analyze current directory structure
-  `scan [path]`           — Analyze a specific project path
-  `edit [desc]`           — Make precise edits to existing code
-
-**🔀 Orchestrate:**
-  `orchestrate [task]`   — Decompose complex tasks, execute sub-agents, synthesize
-
-**💬 Chat:**
-  `ask [question]`        — Deep reasoning question (routes to NVIDIA)
-  `explain [topic]`       — Detailed explanation (routes to Groq)
-
-**⚙️ System (works in ALL modes):**
-  `bash [command]`        — Run terminal command (with safety confirmation)
-  `bash! [command]`       — Run terminal command (no confirmation)
+**⚙️ System Commands (work in ALL modes):**
   `help`                  — Show this help
   `status`                — Show provider & model status
   `clear`                 — Clear screen
-  `exit` / `quit`         — Shut down ARIA
-  `memory`                — View, search, and manage memory (FTS5 keyword)
-  `knowledge [query]`     — Semantic search across all past conversations & research
-  `skill list`            — List available skills
-  `skill show [name]`     — Show skill details & instructions
-  `skill create [name]`   — Create a new skill
-  `read [file]`           — Read PDF, DOCX, or XLSX files
-  `write [file]`          — Write to DOCX or XLSX
+  `exit` / `quit` / `bye` — Shut down ARIA
+  `save`                  — Save last report to a markdown file
+  `save [filename]`       — Save last report to a specific file
+
+**🧠 Memory & Knowledge:**
+  `memory`                — View memory overview
+  `memory recall [query]` — Search past conversations (semantic + keyword)
+  `memory fact key: val`  — Save a fact about yourself or project
+  `memory stats`          — View memory statistics
+  `memory clear`          — Clear all memory
+  `knowledge [query]`     — Semantic search across all indexed content
 
 **📡 Models & Provider:**
-  `model list`            — List all available models by provider
-  `model [model name]`    — Switch to a specific model
-  `model auto`            — Auto-route by task type (default)
+  `model list`            — List all available models
+  `model [name]`          — Switch to a specific model
+  `model auto`            — Auto-route by task type
   `mode groq`             — Force all tasks to use Groq
   `mode nvidia`           — Force all tasks to use NVIDIA
-  `mode local`            — 🖥️ Force all tasks to use Ollama (fully offline)
+  `mode local`            — 🖥️ Force all tasks to use Ollama (offline)
   `mode cloud`            — ☁️ Switch back to cloud providers
 
-**🌐 Local vs Cloud:**
-  `mode local`            — Run entirely offline using Ollama
-  `mode cloud`            — Use cloud providers (Groq, NVIDIA, OpenRouter)
-  `mode auto`             — Back to default routing
-  *ARIA auto-detects Ollama at startup. If running, you can use `mode local` anytime.*
+**💬 Chat (outside work modes):**
+  `ask [question]`        — Deep reasoning question
+  `explain [topic]`       — Detailed explanation
+
+**🛠️ Utilities:**
+  `bash [command]`        — Run terminal command (with safety check)
+  `bash! [command]`       — Run terminal command (skip confirmation)
+  `read [file]`           — Read PDF, DOCX, or XLSX files
+  `write [file]`          — Write last report to DOCX or XLSX
+  `skill list`            — List available skills
+  `skill show [name]`     — View skill details
+  `skill create [name]`   — Create a new skill
 
 **Router — Task-to-Provider Mapping:**
   Groq → chat, research, docs, code review
   NVIDIA → complex coding, deep reasoning, architecture
   OpenRouter → any model (Claude, GPT, Gemini, DeepSeek)
-  Ollama → fully local, any model you have pulled (qwen2.5-coder, llama3.2, etc.)
+  Ollama → fully local, any model you have pulled
 """
 
 
@@ -172,16 +155,7 @@ class ARIA:
             return {"action": "save", "args": ""}
         if text.startswith("save "):
             return {"action": "save", "args": user_input.strip()[5:].strip()}
-        if text.startswith("rd compare "):
-            return {"action": "rd", "args": user_input[11:].strip(), "mode": "compare"}
-        if text.startswith("rd feasibility "):
-            return {"action": "rd", "args": user_input[15:].strip(), "mode": "feasibility"}
-        if text.startswith("rd competitive "):
-            return {"action": "rd", "args": user_input[15:].strip(), "mode": "competitive"}
-        if text == "rd":
-            return {"action": "rd", "args": "", "mode": "deep"}
-        if text.startswith("rd "):
-            return {"action": "rd", "args": user_input[3:].strip(), "mode": "deep"}
+
         if text.startswith("memory recall "):
             return {"action": "memory", "args": user_input[13:].strip(), "memory_action": "recall"}
         if text.startswith("memory forget "):
@@ -199,8 +173,7 @@ class ARIA:
             return {"action": "knowledge", "args": user_input[10:].strip()}
         if text == "knowledge":
             return {"action": "knowledge", "args": ""}
-        if text.startswith("orchestrate "):
-            return {"action": "orchestrate", "args": user_input[12:].strip()}
+
         if text == "skill list":
             return {"action": "skill", "args": "list"}
         if text.startswith("skill show "):
@@ -209,20 +182,12 @@ class ARIA:
             return {"action": "skill", "args": user_input[13:].strip(), "skill_action": "create"}
         if text.startswith("skill "):
             return {"action": "skill", "args": user_input[6:].strip()}
-        if text.startswith("scan "):
-            return {"action": "scan", "args": user_input[5:].strip()}
-        if text == "scan":
-            return {"action": "scan", "args": "."}
-        if text.startswith("edit "):
-            return {"action": "edit", "args": user_input[5:].strip()}
-        if text.startswith("engineer "):
-            return {"action": "engineer", "args": user_input[9:].strip()}
+
         if text.startswith("read "):
             return {"action": "read", "args": user_input[5:].strip()}
         if text.startswith("write "):
             return {"action": "write", "args": user_input[6:].strip()}
-        if text.startswith("research "):
-            return {"action": "research", "args": user_input[9:].strip()}
+
         if text.startswith("ask "):
             return {"action": "chat", "args": user_input[4:].strip(), "task": "deep_reasoning"}
         if text.startswith("explain "):
@@ -237,20 +202,13 @@ class ARIA:
             return {"action": "set_mode", "args": "cloud"}
         if text == "mode auto":
             return {"action": "set_mode", "args": "auto"}
-        if text in ("mode rd", "mode 1", "mode1"):
+        if text in ("mode rd", "mode 1", "mode1", "mode research", "mode analyze", "mode analysis"):
             return {"action": "set_mode", "args": "rd"}
-        if text in ("mode engineer", "mode 2", "mode2"):
+        if text in ("mode engineer", "mode 2", "mode2", "mode plan", "mode design", "mode build"):
             return {"action": "set_mode", "args": "engineer"}
         if text in ("mode orchestrate", "mode 3", "mode3"):
             return {"action": "set_mode", "args": "orchestrate"}
-        if text.startswith("architect "):
-            return {"action": "architect", "args": user_input[10:].strip()}
-        if text.startswith("code "):
-            return {"action": "code", "args": user_input[5:].strip()}
-        if text.startswith("review "):
-            return {"action": "review", "args": user_input[7:].strip()}
-        if text.startswith("debug "):
-            return {"action": "debug", "args": user_input[6:].strip()}
+
         if text == "model list":
             return {"action": "models", "args": "list"}
         if text.startswith("model "):
@@ -317,8 +275,7 @@ class ARIA:
             return self._handle_debug(intent["args"])
         elif action == "models":
             return self._handle_models(intent["args"])
-        elif action == "research":
-            return self._handle_research(intent["args"])
+
         elif action == "chat":
             return self._handle_chat(intent["args"], intent.get("task", "chat"))
         return None
@@ -713,7 +670,7 @@ class ARIA:
     def _handle_rd(self, topic: str, mode: str = "deep") -> Optional[str]:
         """Handle R&D research command — deep research, comparisons, feasibility, competitive."""
         if not topic:
-            return "What should I research? Use: `rd [topic]`, `rd compare A vs B`, `rd feasibility [idea]`, or `rd competitive [market]`"
+            return "What should I research? Just type a topic, comparison, or question — I'll detect the right analysis mode.\n\nExamples: \"Flask vs FastAPI\", \"is drone delivery feasible?\", \"analyze the AI code tools market\""
 
         try:
             client, provider = self._resolve_client("research")
@@ -732,7 +689,8 @@ class ARIA:
                 p.add_task(f"{mode_label.get(mode, 'Researching')}: {topic[:50]}...", total=None)
                 result = run_rd_research(topic, client, mode=mode, max_sources=8, user_context=user_ctx)
 
-            report = format_rd_report(result)
+            self.last_research = {"topic": topic, "content": format_rd_report(result)}
+            report = self.last_research["content"]
 
             console.print("[bold green]ARIA >[/bold green]")
             md = Markdown(report)
@@ -966,7 +924,7 @@ class ARIA:
             "",
         ]
         if self.work_mode:
-            mode_labels = {"rd": "R&D 🧪", "engineer": "Engineer 🛠️", "orchestrate": "Orchestrate 🔀"}
+            mode_labels = {"rd": "Mode 1 — Research & Analysis 🧪", "engineer": "Mode 2 — Design & Build 🛠️", "orchestrate": "Mode 3 — Orchestrate 🔀"}
             label = mode_labels.get(self.work_mode, self.work_mode)
             lines.append(f"Work Mode: **{label}** — non-command inputs routed to {self.work_mode}")
             lines.append("")
@@ -1041,54 +999,16 @@ class ARIA:
         elif mode == "rd":
             self.work_mode = "rd"
             self.force_mode = None
-            return "Mode set to **R&D** 🧪 — any input will trigger deep multi-angle research.\n\nType `mode auto` to exit."
+            return "**Mode 1 — Research & Analysis** 🧪\nI'll research, compare, analyze feasibility, and study competitive landscapes. Just type naturally — I'll detect what you need.\n\nExamples: \"Flask vs FastAPI\", \"is this idea feasible?\", \"analyze the drone market\"\n\nType `mode auto` to exit."
         elif mode == "engineer":
             self.work_mode = "engineer"
             self.force_mode = None
-            return "Mode set to **Engineer** 🛠️ — any input will generate a complete project.\n\nType `mode auto` to exit."
+            return "**Mode 2 — Design & Build** 🛠️\nI'll design architecture, generate code, review, debug, scan structure, and edit files. Just type naturally — I'll detect what you need.\n\nExamples: \"design a task management API\", \"review my code\", \"build a chat app\"\n\nType `mode auto` to exit."
         elif mode == "orchestrate":
             self.work_mode = "orchestrate"
             self.force_mode = None
-            return "Mode set to **Orchestrate** 🔀 — complex tasks will be decomposed into sub-agents.\n\nType `mode auto` to exit."
+            return "**Mode 3 — Orchestrate** 🔀\nI'll decompose complex tasks into sub-agents, execute each step, and synthesize the results. Just describe what you need.\n\nExample: \"Set up a FastAPI project with Docker, tests, and CI/CD\"\n\nType `mode auto` to exit."
         return f"Unknown mode: {mode}.\n\nProvider modes: `groq`, `nvidia`, `openrouter`, `local`, `cloud`, `auto`\nWork modes: `rd` / `1`, `engineer` / `2`, `orchestrate` / `3`"
-
-    def _handle_research(self, topic: str) -> Optional[str]:
-        """Handle research command — web search + structured report."""
-        if not topic:
-            return "What should I research?"
-
-        try:
-            client, provider = self._resolve_client("research")
-        except RuntimeError as e:
-            return str(e)
-
-        console.print(f"  [{provider}] researching: {topic}")
-
-        user_ctx = self._build_memory_context(topic)
-
-        try:
-            with Progress(
-                SpinnerColumn(), TextColumn("[progress.description]{task.description}"),
-                TimeElapsedColumn(), console=console, transient=True,
-            ) as p:
-                p.add_task(f"Researching: {topic[:50]}...", total=None)
-                result = run_research(topic, client, max_sources=5, user_context=user_ctx)
-
-            self.last_research = result  # Store for 'save' command
-            report = format_report(result)
-
-            console.print("[bold green]ARIA >[/bold green]")
-            md = Markdown(report)
-            console.print(md)
-
-            # Save to memory
-            if self.memory_initialized:
-                save_message(self.session_id, "assistant", report[:2000])
-
-            return ""
-
-        except Exception as e:
-            return f"Research failed: {e}"
 
     def _handle_chat(self, message: str, task_type: str = "chat") -> Optional[str]:
         """Handle chat with streaming — tokens appear as generated."""
@@ -1293,9 +1213,9 @@ class ARIA:
             return "What file should I write to? (.docx or .xlsx)"
 
         if not self.last_research:
-            return "No content to write. Run a `research` first."
+            return "No content to write. Do research in mode 1 first."
 
-        report_text = format_report(self.last_research)
+        report_text = self.last_research.get("content", "")
 
         console.print(f"  Writing: {filepath}")
 
@@ -1319,7 +1239,7 @@ class ARIA:
     def _handle_save(self, filename: str) -> str:
         """Save the last research report to a markdown file."""
         if not self.last_research:
-            return "No research report to save. Run a research first."
+            return "No research report to save. Do research in mode 1 first."
 
         topic = self.last_research.get("topic", "report")
         # Sanitize filename
@@ -1333,7 +1253,7 @@ class ARIA:
         else:
             path = Path(f"research-{safe_topic}.md")
 
-        report_text = format_report(self.last_research)
+        report_text = self.last_research.get("content", "")
 
         try:
             path.write_text(report_text, encoding="utf-8")

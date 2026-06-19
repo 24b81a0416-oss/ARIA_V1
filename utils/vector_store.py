@@ -1,14 +1,15 @@
 """
 ARIA — Vector Store (Semantic Memory)
 
-ChromaDB-backed vector store for semantic search using Ollama embeddings.
-No PyTorch, no HuggingFace downloads, no loading bars — just Ollama.
+ChromaDB-backed vector store for semantic search.
+Supports NVIDIA NIM embeddings (primary) with Ollama fallback.
+No PyTorch, no HuggingFace downloads, no loading bars.
 
 Features:
   - Auto-indexing of chat messages, research reports, rd reports
   - Semantic search (find by meaning, not just keywords)
   - Collection-based organization (chat, research, projects, facts)
-  - Lightweight: ChromaDB + Ollama, no extra ML dependencies
+  - Lightweight: ChromaDB + OpenAI-compatible API calls
 
 Usage:
     from utils.vector_store import search_memory, index_content
@@ -16,8 +17,11 @@ Usage:
     results = search_memory("Python web frameworks", limit=5)
 
 Environment:
-    OLLAMA_BASE_URL     (default: http://localhost:11434)
-    OLLAMA_EMBED_MODEL  (default: nomic-embed-text)
+    NVIDIA_API_KEY       (required for NVIDIA NIM embeddings)
+    NVIDIA_BASE_URL      (default: https://integrate.api.nvidia.com/v1)
+    NVIDIA_EMBED_MODEL   (default: nvidia/nv-embed-v1)
+    OLLAMA_BASE_URL      (fallback, default: http://localhost:11434)
+    OLLAMA_EMBED_MODEL   (fallback, default: nomic-embed-text)
 """
 
 from __future__ import annotations
@@ -29,6 +33,10 @@ from typing import Any, Dict, List, Optional
 
 # ── Configuration ────────────────────────────────────────────────────
 
+_NVIDIA_API_KEY = os.environ.get("NVIDIA_API_KEY", "")
+_NVIDIA_BASE_URL = os.environ.get("NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1")
+_NVIDIA_EMBED_MODEL = os.environ.get("NVIDIA_EMBED_MODEL", "nvidia/nv-embed-v1")
+
 _OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
 _OLLAMA_EMBED_MODEL = os.environ.get("OLLAMA_EMBED_MODEL", "nomic-embed-text")
 
@@ -37,13 +45,38 @@ _STORE: Optional[Any] = None         # Singleton ChromaDB collection
 _EMBEDDING_FN: Optional[Any] = None  # Singleton embedding function
 
 
-# ── Ollama Embedding Function ────────────────────────────────────────
+# ── Embedding Providers ──────────────────────────────────────────────
+
+class NvidiaEmbeddingFunction:
+    """ChromaDB-compatible embedding function that calls NVIDIA NIM's /v1/embeddings.
+
+    Uses the OpenAI-compatible NVIDIA API endpoint. Requires NVIDIA_API_KEY.
+    """
+
+    def __init__(self, api_key: str, base_url: str, model: str):
+        self.api_key = api_key
+        self.base_url = base_url.rstrip("/")
+        self.model = model
+        from openai import OpenAI
+        self._client = OpenAI(api_key=api_key, base_url=self.base_url)
+
+    def name(self) -> str:
+        """ChromaDB calls embedding_function.name() to check for conflicts."""
+        return f"nvidia_{self.model}"
+
+    def __call__(self, input: List[str]) -> List[List[float]]:
+        """Generate embeddings via NVIDIA NIM API."""
+        response = self._client.embeddings.create(
+            model=self.model,
+            input=input,
+        )
+        return [item.embedding for item in response.data]
+
 
 class OllamaEmbeddingFunction:
     """ChromaDB-compatible embedding function that calls Ollama's /api/embed.
 
-    Uses the requests library (already a dependency) to get embeddings
-    from a local Ollama server. No PyTorch, no HuggingFace.
+    Fallback provider when NVIDIA is not available.
     """
 
     def __init__(self, base_url: str, model: str):
@@ -78,17 +111,42 @@ def _ping_ollama() -> bool:
         return False
 
 
-def _get_embedding_function() -> Optional[OllamaEmbeddingFunction]:
-    """Get or create the Ollama embedding function singleton."""
+def _get_embedding_function() -> Optional[Any]:
+    """Get or create the verified embedding function singleton.
+
+    Priority: NVIDIA NIM → Ollama (local) → None
+    Verifies the provider works with a quick test call before caching.
+    """
     global _EMBEDDING_FN
     if _EMBEDDING_FN is not None:
         return _EMBEDDING_FN
 
-    if not _ping_ollama():
-        return None  # Ollama not running
+    # Try NVIDIA first: create + quick test call to verify endpoint works
+    if _NVIDIA_API_KEY:
+        try:
+            fn = NvidiaEmbeddingFunction(_NVIDIA_API_KEY, _NVIDIA_BASE_URL, _NVIDIA_EMBED_MODEL)
+            fn(["test"])  # Quick connectivity & model check
+            _EMBEDDING_FN = fn
+            return _EMBEDDING_FN
+        except Exception:
+            pass  # Fall through to Ollama
 
-    _EMBEDDING_FN = OllamaEmbeddingFunction(_OLLAMA_BASE_URL, _OLLAMA_EMBED_MODEL)
-    return _EMBEDDING_FN
+    # Fall back to Ollama
+    if _ping_ollama():
+        _EMBEDDING_FN = OllamaEmbeddingFunction(_OLLAMA_BASE_URL, _OLLAMA_EMBED_MODEL)
+        return _EMBEDDING_FN
+
+    return None  # No provider available
+
+
+def _get_active_provider_name() -> str:
+    """Return the name of the active embedding provider."""
+    if _EMBEDDING_FN is not None:
+        if isinstance(_EMBEDDING_FN, NvidiaEmbeddingFunction):
+            return f"nvidia ({_NVIDIA_EMBED_MODEL})"
+        elif isinstance(_EMBEDDING_FN, OllamaEmbeddingFunction):
+            return f"ollama ({_OLLAMA_EMBED_MODEL})"
+    return "none"
 
 
 def _get_store():
@@ -122,11 +180,12 @@ def _get_store():
 # ── Public API ────────────────────────────────────────────────────────
 
 def is_available() -> bool:
-    """Check if the vector store is available (Ollama + ChromaDB)."""
+    """Check if the vector store is available (NVIDIA or Ollama + ChromaDB)."""
     try:
         import chromadb
-        import requests
-        return _ping_ollama()
+        # Try to get the embedding function (tests actual connectivity)
+        fn = _get_embedding_function()
+        return fn is not None
     except ImportError:
         return False
 
@@ -149,6 +208,12 @@ def index_content(
     """
     if not content or len(content.strip()) < 20:
         return False  # Skip very short content
+
+    # Truncate very long content to avoid embedding provider token limits
+    # Most models have max ~512 tokens (~2000 chars)
+    MAX_CHARS = 2000
+    if len(content) > MAX_CHARS:
+        content = content[:MAX_CHARS]
 
     store = _get_store()
     if store is None:
@@ -238,7 +303,13 @@ def get_stats() -> Dict[str, Any]:
     """Get vector store statistics."""
     store = _get_store()
     if store is None:
-        return {"available": False, "count": 0, "error": "Not available (Ollama running?)"}
+        return {
+            "available": False,
+            "count": 0,
+            "error": "No embedding provider available",
+            "nvidia_key": bool(_NVIDIA_API_KEY),
+            "ollama_running": _ping_ollama() if not _NVIDIA_API_KEY else False,
+        }
 
     try:
         count = store.count()
@@ -246,7 +317,7 @@ def get_stats() -> Dict[str, Any]:
             "available": True,
             "count": count,
             "path": str(_VECTOR_STORE_DIR),
-            "ollama_model": _OLLAMA_EMBED_MODEL,
+            "provider": _get_active_provider_name(),
         }
     except Exception as e:
         return {"available": True, "count": -1, "error": str(e)}

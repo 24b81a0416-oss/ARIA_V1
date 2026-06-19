@@ -816,14 +816,15 @@ def _():
     assert_eq(aria.parse_intent("mode nvidia")["action"], "set_mode")
 
 
-@test("ARIA: RD commands detection")
+@test("ARIA: RD keywords fall through to chat (use modes instead)")
 def _():
     aria = _make_aria()
-    assert_eq(aria.parse_intent("rd compare FastAPI vs Flask")["action"], "rd")
-    assert_eq(aria.parse_intent("rd feasibility building a chat app")["action"], "rd")
-    assert_eq(aria.parse_intent("rd competitive AI coding market")["action"], "rd")
-    assert_eq(aria.parse_intent("rd Python features")["action"], "rd")
-    assert_eq(aria.parse_intent("rd")["action"], "rd")
+    # Standalone rd keywords should fall through to chat
+    assert_eq(aria.parse_intent("rd compare FastAPI vs Flask")["action"], "chat")
+    assert_eq(aria.parse_intent("rd feasibility building a chat app")["action"], "chat")
+    assert_eq(aria.parse_intent("rd competitive AI coding market")["action"], "chat")
+    assert_eq(aria.parse_intent("rd Python features")["action"], "chat")
+    assert_eq(aria.parse_intent("rd")["action"], "chat")
 
 
 @test("ARIA: memory commands detection")
@@ -837,17 +838,18 @@ def _():
     assert_eq(aria.parse_intent("memory clear")["action"], "memory")
 
 
-@test("ARIA: engineer commands detection")
+@test("ARIA: engineer keywords fall through to chat (use modes instead)")
 def _():
     aria = _make_aria()
-    assert_eq(aria.parse_intent("engineer a Flask todo app")["action"], "engineer")
-    assert_eq(aria.parse_intent("code a CLI tool")["action"], "code")
-    assert_eq(aria.parse_intent("architect a microservice")["action"], "architect")
-    assert_eq(aria.parse_intent("review utils/")["action"], "review")
-    assert_eq(aria.parse_intent("debug the login crash")["action"], "debug")
-    assert_eq(aria.parse_intent("scan .")["action"], "scan")
-    assert_eq(aria.parse_intent("scan")["action"], "scan")
-    assert_eq(aria.parse_intent("edit add dark mode")["action"], "edit")
+    # Standalone engineer keywords should fall through to chat
+    assert_eq(aria.parse_intent("engineer a Flask todo app")["action"], "chat")
+    assert_eq(aria.parse_intent("code a CLI tool")["action"], "chat")
+    assert_eq(aria.parse_intent("architect a microservice")["action"], "chat")
+    assert_eq(aria.parse_intent("review utils/")["action"], "chat")
+    assert_eq(aria.parse_intent("debug the login crash")["action"], "chat")
+    assert_eq(aria.parse_intent("scan .")["action"], "chat")
+    assert_eq(aria.parse_intent("scan")["action"], "chat")
+    assert_eq(aria.parse_intent("edit add dark mode")["action"], "chat")
 
 
 @test("ARIA: system commands detection")
@@ -864,7 +866,8 @@ def _():
 @test("ARIA: chat/research commands")
 def _():
     aria = _make_aria()
-    assert_eq(aria.parse_intent("research Python trends")["action"], "research")
+    # research keyword now falls through to chat (use mode 1 instead)
+    assert_eq(aria.parse_intent("research Python trends")["action"], "chat")
     assert_eq(aria.parse_intent("ask what is FastAPI")["action"], "chat")
     assert_eq(aria.parse_intent("explain quantum computing")["action"], "chat")
 
@@ -891,10 +894,10 @@ def _():
     assert_eq(aria.parse_intent("skill create new-skill")["action"], "skill")
 
 
-@test("ARIA: orchestrate command")
+@test("ARIA: orchestrate keyword falls through to chat (use mode 3 instead)")
 def _():
     aria = _make_aria()
-    assert_eq(aria.parse_intent("orchestrate deploy microservices")["action"], "orchestrate")
+    assert_eq(aria.parse_intent("orchestrate deploy microservices")["action"], "chat")
 
 
 @test("ARIA: read/write commands")
@@ -1002,10 +1005,10 @@ def _():
     aria.running = True
 
 
-@test("ARIA: HELP_TEXT contains all sections")
+@test("ARIA: HELP_TEXT contains updated sections")
 def _():
     from aria import HELP_TEXT
-    for section in ["Work Modes", "R&D", "Engineer", "Orchestrate", "Chat", "System", "Models & Provider"]:
+    for section in ["Research & Analysis", "Design & Build", "Orchestrate", "System Commands", "Memory & Knowledge", "Models & Provider", "Utilities"]:
         assert_in(section, HELP_TEXT)
 
 
